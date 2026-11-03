@@ -97,4 +97,6 @@ seald was inspired by a local `seal-paste.sh` workflow (a tiny hidden paste stra
 
 ## License
 
-MIT. See [LICENSE](LICENSE).
+MIT © 2026 Genga Labs. See [LICENSE](LICENSE).
+
+<p align="center"><sub>Built and maintained by <strong>Genga Labs</strong>.</sub></p>

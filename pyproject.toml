@@ -10,6 +10,9 @@ readme = "README.md"
 requires-python = ">=3.10"
 license = "MIT"
 license-files = ["LICENSE"]
+authors = [{ name = "Genga Labs" }]
+maintainers = [{ name = "Genga Labs" }]
+keywords = ["age", "encryption", "secrets", "cli"]
 dependencies = []
 classifiers = [
     "Development Status :: 3 - Alpha",
@@ -24,6 +27,10 @@ classifiers = [
     "Topic :: Security :: Cryptography",
     "Topic :: Utilities",
 ]
+
+[project.urls]
+Homepage = "https://github.com/adammamaril/seald"
+Issues = "https://github.com/adammamaril/seald/issues"
 
 [project.scripts]
 seald = "seald.cli:main"
