@@ -33,32 +33,36 @@ No install? Clone the repo and run `./seald` in place. It's a clone-and-run shim
 
 ## How it works
 
+**What's on disk.** One directory, one key, one file per secret:
+
 ```
-                 ┌─ store: ~/.local/share/seald (or $SEALD_HOME) ─────────────────────┐
- seald init ───▶ │  age-keygen ──────────▶ identity.txt  (0600, created once, never   │
-                 │                                        replaced)                   │
-                 │                                                                    │
- seald seal NAME │  /dev/tty (echo off) ──▶ age -r <recipient> ──▶ NAME.age           │
-                 │     hidden paste          streamed, no plaintext  refuses to       │
-                 │                           file                    overwrite        │
-                 │                                                                    │
- seald open NAME │  NAME.age ──▶ age -d -i identity.txt ──▶ stdout (plaintext)        │
-                 └────────────────────────────────────────────────────────────────────┘
+~/.local/share/seald/          (or $SEALD_HOME, mode 0700)
+├── identity.txt               age private key · 0600 · created by init, never replaced
+├── cloudflare-token.age       ciphertext · 0600 · refuses to overwrite
+└── github-pat.age             ciphertext · 0600
 ```
 
+**What happens when you seal and open.** Plaintext only exists in the pipe to age and on stdout:
+
 ```mermaid
-flowchart LR
-  subgraph store["store (~/.local/share/seald or $SEALD_HOME)"]
-    ID[identity.txt]
-    S[NAME.age]
-  end
-  init([seald init]) --> KG[age-keygen] --> ID
-  seal([seald seal NAME]) --> TTY["/dev/tty, echo off"] --> ENC["age -r recipient"] --> S
-  ID -. "age-keygen -y (public recipient)" .-> ENC
-  open([seald open NAME]) --> DEC["age -d -i identity.txt"]
-  S --> DEC
-  ID --> DEC
-  DEC --> OUT[stdout]
+sequenceDiagram
+  autonumber
+  actor You
+  participant S as seald
+  participant T as /dev/tty
+  participant A as age
+  participant F as NAME.age
+  You->>S: seald seal NAME
+  S->>S: check name, refuse if NAME.age exists
+  S->>A: age-keygen -y identity.txt (public recipient)
+  S->>T: echo off
+  You->>T: paste secret, Enter, Ctrl+D
+  T->>A: stream plaintext (never touches disk)
+  A->>F: ciphertext (temp file, 0600, then hard-link into place)
+  S->>T: echo restored
+  You->>S: seald open NAME
+  F->>A: age -d -i identity.txt
+  A->>You: plaintext on stdout
 ```
 
 - `init` generates an age identity in `identity.txt`. Each secret is encrypted to its own `NAME.age` file.
