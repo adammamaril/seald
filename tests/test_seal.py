@@ -49,6 +49,25 @@ class SealTests(unittest.TestCase):
         p = self.run_seal(str(self.src), str(self.out), env=dict(self.env, SEAL_RECIPIENTS=self.pub))
         self.assertEqual(p.returncode, 0, p.stderr)
 
+    def test_failure_leaves_nothing_behind(self):
+        self.src.write_text('token: [unclosed\n')
+        p = self.run_seal('-r', self.pub, str(self.src), str(self.out))
+        self.assertEqual(p.returncode, 1)
+        self.assertEqual(sorted(x.name for x in self.tmp.iterdir()), ['in.yaml', 'key.txt'])
+
+    def test_force_replace_keeps_old_output_on_failure(self):
+        self.assertEqual(self.run_seal('-r', self.pub, str(self.src), str(self.out)).returncode, 0)
+        before = self.out.read_bytes()
+        self.src.write_text('token: [unclosed\n')
+        self.assertEqual(self.run_seal('-f', '-r', self.pub, str(self.src), str(self.out)).returncode, 1)
+        self.assertEqual(self.out.read_bytes(), before)
+
+    def test_refuses_xtrace(self):
+        p = subprocess.run(['bash', '-x', SEAL, '-r', self.pub, str(self.src), str(self.out)],
+                           capture_output=True, text=True, env=self.env)
+        self.assertEqual(p.returncode, 2)
+        self.assertFalse(self.out.exists())
+
 
 if __name__ == '__main__':
     unittest.main()

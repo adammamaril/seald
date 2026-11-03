@@ -1,9 +1,5 @@
 __pycache__/
-*.py[cod]
 .env
-*.age
-identity.txt
-dist/
-build/
-*.egg-info/
-.venv/
+*.yaml
+!*.enc.yaml
+keys.txt
