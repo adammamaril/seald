@@ -16,9 +16,16 @@ jobs:
           python-version: ${{ matrix.python-version }}
       - name: Install age
         run: sudo apt-get update && sudo apt-get install -y age
+      - name: Install sops
+        run: |
+          curl -fsSLo sops.deb https://github.com/getsops/sops/releases/download/v3.13.3/sops_3.13.3_amd64.deb
+          sudo apt-get install -y ./sops.deb && rm sops.deb
       - name: Install seald
         run: python -m pip install .
       - name: Run tests
         run: python -m unittest discover -s tests -v
-      - name: Check installed entrypoint
-        run: seald --help
+      - name: Check installed entrypoints
+        run: |
+          seald --help
+          seal -h 2>&1 | grep -q 'Usage:'
+          SEALD_CLI="$(command -v seald)" SEAL_CLI="$(command -v seal)" python -m unittest discover -s tests

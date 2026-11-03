@@ -1,0 +1,64 @@
+#!/usr/bin/env bash
+# seal — encrypt a YAML secrets file to one or more age recipients with SOPS.
+#
+# Usage:
+#   seal [-r AGE_PUBLIC_KEY]... [-R RECIPIENTS_FILE] [-f] INPUT.yaml OUTPUT.enc.yaml
+#
+# Recipients (age public keys, "age1...") come from -r (repeatable), from -R
+# (one key per line; blank lines and # comments ignored), or from the
+# SEAL_RECIPIENTS environment variable (comma-separated). At least one is required.
+#
+# Guarantees:
+#   * OUTPUT is mode 0600 from the moment it is created.
+#   * Plaintext is never copied anywhere: sops reads INPUT and writes ciphertext.
+#   * OUTPUT is only replaced on success, and an existing OUTPUT is kept unless -f is given.
+#   * Prints only the output path (stdout) and a status line (stderr), never a secret.
+#
+# Requires: sops. Decrypt with: SOPS_AGE_KEY_FILE=~/.config/sops/age/keys.txt sops -d OUTPUT
+set -euo pipefail
+umask 077
+case $- in *x*) echo "seal: refusing to run with xtrace on" >&2; exit 2 ;; esac
+
+die() { printf 'seal: %s\n' "$1" >&2; exit 1; }
+usage() { sed -n '2,/^$/p' "$0" | sed 's/^# \{0,1\}//' >&2; exit "${1:-2}"; }
+
+recipients=()
+force=0
+if [ -n "${SEAL_RECIPIENTS:-}" ]; then IFS=, read -r -a recipients <<<"$SEAL_RECIPIENTS"; fi
+
+while getopts ':r:R:fh' opt; do
+  case $opt in
+    r) recipients+=("$OPTARG") ;;
+    R) [ -r "$OPTARG" ] || die "cannot read recipients file: $OPTARG"
+       while IFS= read -r line; do
+         line="${line%%#*}"; line="${line//[[:space:]]/}"
+         [ -n "$line" ] && recipients+=("$line")
+       done <"$OPTARG" ;;
+    f) force=1 ;;
+    h) usage 0 ;;
+    *) usage ;;
+  esac
+done
+shift $((OPTIND - 1))
+
+[ $# -eq 2 ] || usage
+input=$1 output=$2
+[ ${#recipients[@]} -gt 0 ] || die "no recipients; use -r, -R or SEAL_RECIPIENTS"
+for r in "${recipients[@]}"; do
+  case $r in age1[a-z0-9]*) ;; *) die "not an age public key: $r" ;; esac
+done
+[ -r "$input" ] || die "cannot read input: $input"
+[ "$force" = 1 ] || [ ! -e "$output" ] || die "$output exists; use -f to replace it"
+command -v sops >/dev/null 2>&1 || die "sops is required; install it first"
+
+tmp=$(mktemp "$output.XXXXXX")
+trap 'rm -f "$tmp"' EXIT
+
+joined=$(IFS=,; printf '%s' "${recipients[*]}")
+sops --encrypt --age "$joined" --input-type yaml --output-type yaml "$input" >"$tmp" \
+  || die "sops encryption failed"
+chmod 0600 "$tmp"
+mv -f "$tmp" "$output"
+
+printf 'seal: sealed to %d recipient(s) -> %s\n' "${#recipients[@]}" "$output" >&2
+printf '%s\n' "$output"

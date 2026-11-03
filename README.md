@@ -29,7 +29,29 @@ seald list
 seald open cloudflare-token   # writes plaintext to stdout
 ```
 
-No install? Clone the repo and run `./seald` in place. It's a clone-and-run shim for the same tool.
+The install puts two commands on your PATH: `seald` (this quickstart) and `seal` (SOPS file sealing, see [Two tools](#two-tools)).
+
+No install? Clone the repo and run `./seald` or `./bin/seal` in place.
+
+## Two tools
+
+The package installs two commands. They do different jobs, so don't mix up `seal` with the `seald seal` subcommand.
+
+| Tool | For | Input | Output | Needs |
+|---|---|---|---|---|
+| `seald` | Stashing one secret fast, for yourself | Hidden terminal paste | `NAME.age` in your local store | `age`, `age-keygen` |
+| `seal` | Sharing a secrets file with one or more people or machines | Plaintext `INPUT.yaml` | SOPS-encrypted `OUTPUT.enc.yaml` (0600) | `sops` |
+
+### `seal`: SOPS YAML to age recipients
+
+```sh
+seal -r age1alice... -r age1ci... secrets.yaml secrets.enc.yaml
+seal -R recipients.txt secrets.yaml secrets.enc.yaml        # one age1... key per line, # comments ok
+SEAL_RECIPIENTS=age1alice...,age1ci... seal secrets.yaml secrets.enc.yaml
+sops -d secrets.enc.yaml                                     # decrypt (needs a matching age identity)
+```
+
+The output is created with mode 0600. An existing output is never replaced unless you pass `-f`, and the file is only swapped in once encryption succeeds. `seal` prints the output path, never a secret.
 
 ## How it works
 
@@ -67,8 +89,8 @@ sequenceDiagram
 
 - `init` generates an age identity in `identity.txt`. Each secret is encrypted to its own `NAME.age` file.
 - Names may contain letters, numbers, dots, underscores and dashes, and must start with a letter or number.
-- `seal` requires a real terminal and stops if it cannot turn off echo. Plaintext is streamed to age and never saved to a plaintext file.
-- `seal` refuses to overwrite a name. To replace a secret, remove its encrypted file on purpose and seal it again.
+- `seald seal` requires a real terminal and stops if it cannot turn off echo. Plaintext is streamed to age and never saved to a plaintext file.
+- `seald seal` refuses to overwrite a name. To replace a secret, remove its encrypted file on purpose and seal it again.
 
 ## Keep in mind
 
@@ -76,6 +98,7 @@ sequenceDiagram
 - The private key and the encrypted files sit in the same store, protected only by filesystem permissions. Anyone who can read both can decrypt the secrets. This is **not isolation from your own user account or from agents running as you**.
 - `open` prints plaintext to standard output. Watch out for terminal scrollback, logs, screen sharing and shell redirection. Don't pass secrets as command arguments.
 - You have to trust the terminal, its host, and any process that can inspect them. seald cannot protect secrets on a compromised machine.
+- `seal` leaves your plaintext `INPUT.yaml` on disk. Deleting it is up to you.
 
 ## Development
 

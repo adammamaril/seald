@@ -41,5 +41,8 @@ path = "src/seald/__init__.py"
 [tool.hatch.build.targets.wheel]
 packages = ["src/seald"]
 
+[tool.hatch.build.targets.wheel.shared-scripts]
+"bin/seal" = "seal"
+
 [tool.hatch.build.targets.sdist]
-include = ["src/seald", "tests", "LICENSE", "README.md", "seald"]
+include = ["src/seald", "bin", "tests", "LICENSE", "README.md", "seald"]
