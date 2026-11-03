@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 240 240" role="img" aria-labelledby="title">
+<title id="title">A small seal holding an envelope</title>
+<circle cx="120" cy="120" r="112" fill="#dbf2ed"/>
+<ellipse cx="119" cy="182" rx="75" ry="19" fill="#b8ded6"/>
+<path d="M46 167 Q22 181 33 190 Q50 195 69 181 M189 168 Q218 180 207 190 Q191 196 172 181" fill="#82aaa7" stroke="#345b60" stroke-width="5" stroke-linecap="round"/>
+<path d="M57 165 Q57 102 79 79 Q95 59 120 60 Q146 59 162 79 Q183 105 183 165 Q183 187 120 188 Q57 187 57 165Z" fill="#b8d1ce" stroke="#345b60" stroke-width="5"/>
+<ellipse cx="120" cy="121" rx="33" ry="23" fill="#eaf5ef"/>
+<circle cx="92" cy="105" r="5" fill="#29494d"/><circle cx="148" cy="105" r="5" fill="#29494d"/>
+<path d="M115 117 Q120 123 125 117 Q120 113 115 117Z" fill="#29494d"/><path d="M120 122 Q120 131 110 131 M120 122 Q120 131 130 131" fill="none" stroke="#345b60" stroke-width="3" stroke-linecap="round"/>
+<path d="M96 122 l-20 -3 M96 128 l-22 2 M144 122 l20 -3 M144 128 l22 2" stroke="#658c89" stroke-width="2.5" stroke-linecap="round"/>
+<rect x="77" y="143" width="86" height="52" rx="6" fill="#fff8e8" stroke="#345b60" stroke-width="4"/>
+<path d="M79 147 l41 28 41 -28" fill="none" stroke="#345b60" stroke-width="4" stroke-linejoin="round"/>
+<path d="M63 151 Q68 138 79 150 L86 161 Q90 171 80 174 Q71 175 63 163 M177 151 Q172 138 161 150 L154 161 Q150 171 160 174 Q169 175 177 163" fill="#91b6b1" stroke="#345b60" stroke-width="4" stroke-linejoin="round"/>
+<circle cx="120" cy="174" r="5" fill="#ea8e7c"/>
+</svg>
