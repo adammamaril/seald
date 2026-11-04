@@ -18,10 +18,10 @@ git clone https://github.com/adammamaril/seald && cd seald
 ./seal set GITHUB_TOKEN          # hidden prompt, asked twice
 ./seal exec -- gh repo list      # gh sees $GITHUB_TOKEN; your shell never does
 ```
+## Requirements
 
 Needs [sops](https://github.com/getsops/sops), [age](https://github.com/FiloSottile/age) and [jq](https://jqlang.github.io/jq/):
 
-<details>
 <summary><b>Install them</b> (macOS · Arch · Debian/Ubuntu · Fedora)</summary>
 
 ```sh
@@ -32,9 +32,8 @@ sudo apt install age jq             # Debian / Ubuntu   (Fedora: sudo dnf instal
 curl -fsSLo sops https://github.com/getsops/sops/releases/download/v3.13.3/sops-v3.13.3.linux.amd64
 sudo install -m 0755 sops /usr/local/bin/sops && rm sops
 ```
-</details>
 
-No age key yet? Run once:
+No age key yet? Run once: 
 
 ```sh
 mkdir -p ~/.config/sops/age
