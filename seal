@@ -30,7 +30,7 @@
 #   * Files are written via a temporary file and moved into place; modes are 0600.
 #   * Refuses to run under xtrace.
 #
-# Requires: sops, jq (jq for the ledger commands only).
+# Requires: sops. Nothing else.
 
 set -euo pipefail
 umask 077
@@ -45,7 +45,24 @@ die() { printf 'seal: %s\n' "$1" >&2; exit 1; }
 usage() { sed -n '2,/^$/p' "$0" | sed 's/^# \{0,1\}//' >&2; exit "${1:-2}"; }
 need() { command -v "$1" >/dev/null 2>&1 || die "$1 is required; install it first"; }
 shq() { local s=$1; s=${s//\'/"'\\''"}; printf "'%s'" "$s"; }
-valid_key() { [[ ${1:-} =~ $KEY_RE ]] || die "bad key name '${1:-}': use letters, digits and _, not starting with a digit"; }
+valid_key() {
+  [[ ${1:-} =~ $KEY_RE ]] || die "bad key name '${1:-}': use letters, digits and _, not starting with a digit"
+  [ "$1" != sops ] || die "'sops' is reserved for the ledger's own metadata; pick another name"
+}
+
+# JSON-encode $1 as a string, in pure bash: no subprocess, the value never reaches argv.
+json_str() {
+  local s=$1 i c
+  s=${s//\\/\\\\}; s=${s//\"/\\\"}
+  s=${s//$'\n'/\\n}; s=${s//$'\t'/\\t}; s=${s//$'\r'/\\r}; s=${s//$'\b'/\\b}; s=${s//$'\f'/\\f}
+  for i in {1..31}; do
+    printf -v c '%b' "\\x$(printf %02x "$i")"
+    case $c in $'\n' | $'\t' | $'\r' | $'\b' | $'\f') continue ;; esac
+    s=${s//"$c"/$(printf '\\u%04x' "$i")}
+  done
+  s=${s//$'\x7f'/\\u007f}
+  printf '"%s"' "$s"
+}
 
 # Append recipients from the default sources to the global `recipients` array.
 env_recipients() {
@@ -68,18 +85,25 @@ join_recipients() { local IFS=,; printf '%s' "$*"; }
 ORIG=$PWD
 resolve_ledger() {
   case $ledger in /*) ;; *) ledger=$PWD/$ledger ;; esac
+  case $ledger in *.yaml | *.yml) ;; *) die "the ledger must be a .yaml or .yml file: $ledger" ;; esac
   ldir=$(dirname "$ledger"); lbase=$(basename "$ledger")
 }
 enter_ledger() {  # ledger must exist; cd so a stray .sops.yaml elsewhere cannot apply
-  need sops; need jq
+  need sops
   resolve_ledger
   [ -f "$ledger" ] || die "no ledger at $ledger; create it with: seal set KEY"
   cd "$ldir"
 }
-key_names() { sops -d --output-type json "$lbase" | jq -r 'keys[]'; }
+key_names() {  # key names are plaintext in a SOPS file: read them without decrypting anything
+  local line
+  while IFS= read -r line || [ -n "$line" ]; do
+    [[ $line =~ ^([A-Za-z_][A-Za-z0-9_]*): ]] || continue
+    [ "${BASH_REMATCH[1]}" = sops ] || printf '%s\n' "${BASH_REMATCH[1]}"
+  done <"$lbase"
+}
 require_key() {
   local names
-  names=$(key_names) || die "cannot decrypt $ledger"
+  names=$(key_names) || die "cannot read $ledger"
   printf '%s\n' "$names" | grep -qxF -- "$1" || die "$1 not found"
 }
 
@@ -116,7 +140,7 @@ cmd_set() {
   done
   [ -n "$key" ] || usage
   valid_key "$key"
-  need sops; need jq
+  need sops
   resolve_ledger
   if [ ! -e "$ledger" ]; then
     recipients=(); env_recipients
@@ -129,7 +153,7 @@ cmd_set() {
   mkdir -p "$ldir"
   cd "$ldir"
   if [ -n "$rcpts" ]; then new_ledger "$rcpts"; fi
-  printf '%s' "$value" | jq -Rs . | sops set --value-stdin "$lbase" "[\"$key\"]" \
+  json_str "$value" | sops set --value-stdin "$lbase" "[\"$key\"]" \
     || die "could not store $key"
   chmod 0600 "$lbase"
   printf 'seal: stored %s in %s\n' "$key" "$ledger" >&2
@@ -144,7 +168,7 @@ cmd_get() {
 cmd_list() {
   [ $# -eq 0 ] || usage
   enter_ledger
-  key_names || die "cannot decrypt $ledger"
+  key_names | LC_ALL=C sort || die "cannot read $ledger"
 }
 
 cmd_rm() {

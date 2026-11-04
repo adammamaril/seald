@@ -9,11 +9,11 @@ import time
 import unittest
 
 SEAL = os.environ.get('SEAL_CLI', str(Path(__file__).resolve().parents[1] / 'seal'))
-HAVE = all(shutil.which(t) for t in ('sops', 'jq', 'age-keygen'))
+HAVE = all(shutil.which(t) for t in ('sops', 'age-keygen'))
 VALUE = 'line one\nit\'s "quoted" $HOME \\n {braces}\nlast'
 
 
-@unittest.skipUnless(HAVE, 'sops, jq and age-keygen required')
+@unittest.skipUnless(HAVE, 'sops and age-keygen required')
 class Base(unittest.TestCase):
     def setUp(self):
         self.tmp = Path(tempfile.mkdtemp())
@@ -182,6 +182,54 @@ class LedgerTests(Base):
             self.assertIn(word, err)
         self.assertEqual(self.seal().returncode, 2)
         self.assertEqual(self.seal('bogus').returncode, 2)
+
+    HARD_VALUES = [
+        b'multi\nline\nvalue',
+        b'quo"te \\back\\slash and a literal \\n',
+        b'tab\there\r\nCRLF\r\n',
+        b'ctrl\x01\x07\x08\x0c\x1b[31m\x1f del\x7f',
+        'ünï©ødé 🔐 日本語'.encode(),
+        b'{"looks": "like json"}',
+        b'true',
+        b'123',
+        b'$(touch pwned) `id` ${HOME}',
+        b'trailing newline\n',
+    ]
+
+    def test_hard_values_round_trip_byte_exact(self):
+        for i, v in enumerate(self.HARD_VALUES):
+            with self.subTest(value=v):
+                k = f'HARD_{i}'
+                p = subprocess.run([SEAL, 'set', k], input=v, capture_output=True, env=self.env)
+                self.assertEqual(p.returncode, 0, p.stderr)
+                got = subprocess.run([SEAL, 'get', k], capture_output=True, env=self.env)
+                self.assertEqual(got.stdout, v)
+        self.assertFalse((self.tmp / 'work' / 'pwned').exists())
+        self.assertFalse(Path('pwned').exists())
+
+    def test_hard_value_reaches_exec_env(self):
+        v = 'a "b" \\c\nd\te $(x)'
+        self.put('HARD', v)
+        p = self.seal('exec', '--', 'sh', '-c', 'printf %s "$HARD"', check=True)
+        self.assertEqual(p.stdout, v)
+
+    def test_sops_key_name_reserved(self):
+        self.put('A', 'a')
+        p = self.seal('set', 'sops', input='x')
+        self.assertEqual(p.returncode, 1)
+        self.assertIn('reserved', p.stderr)
+        self.assertEqual(self.seal('get', 'A').stdout, 'a')
+
+    def test_list_needs_no_identity(self):
+        self.put('ONE', 'x')
+        self.put('TWO', 'y')
+        env = dict(self.env, SOPS_AGE_KEY_FILE=str(self.tmp / 'nonexistent'))
+        self.assertEqual(self.seal('list', env=env, check=True).stdout, 'ONE\nTWO\n')
+
+    def test_non_yaml_ledger_rejected(self):
+        p = self.seal('-l', str(self.tmp / 'secrets.json'), 'set', 'A', input='x')
+        self.assertEqual(p.returncode, 1)
+        self.assertIn('.yaml', p.stderr)
 
 
 class PromptTests(Base):

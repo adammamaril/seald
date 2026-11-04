@@ -20,14 +20,14 @@ git clone https://github.com/adammamaril/seald && cd seald
 ```
 ## Requirements
 
-Needs [sops](https://github.com/getsops/sops), [age](https://github.com/FiloSottile/age) and [jq](https://jqlang.github.io/jq/):
+Needs only [sops](https://github.com/getsops/sops), plus [age](https://github.com/FiloSottile/age) to make your key:
 
 <summary><b>Install them</b> (macOS · Arch · Debian/Ubuntu · Fedora)</summary>
 
 ```sh
-brew install sops age jq            # macOS
-sudo pacman -S sops age jq          # Arch
-sudo apt install age jq             # Debian / Ubuntu   (Fedora: sudo dnf install age jq)
+brew install sops age               # macOS
+sudo pacman -S sops age             # Arch
+sudo apt install age                # Debian / Ubuntu   (Fedora: sudo dnf install age)
 # no sops package on your distro? use the release binary (arm64: swap amd64):
 curl -fsSLo sops https://github.com/getsops/sops/releases/download/v3.13.3/sops-v3.13.3.linux.amd64
 sudo install -m 0755 sops /usr/local/bin/sops && rm sops
@@ -68,7 +68,7 @@ Ledger: `~/.local/share/seal/secrets.enc.yaml` (`-l` / `SEAL_LEDGER`). Recipient
 │                  (or piped / --stdin: the whole of stdin)                │
 │ 3. first set     recipients: SEAL_RECIPIENTS or ~/.config/sops/age/pubs  │
 │                  creates an empty ledger: temp file, 0600, mv into place │
-│ 4. store         printf %s | jq -Rs . | sops set --value-stdin LEDGER    │
+│ 4. store         json_str (pure bash) | sops set --value-stdin LEDGER    │
 │                  then chmod 0600                                         │
 │                                                                          │
 │ the value is never in argv, never on disk in clear, never echoed         │

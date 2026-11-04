@@ -7,9 +7,12 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Install age, jq, sops, shellcheck
+      - name: Install age, sops, shellcheck (and make sure jq is gone)
         run: |
-          sudo apt-get update && sudo apt-get install -y age jq shellcheck
+          sudo apt-get update && sudo apt-get install -y age shellcheck
+          sudo apt-get remove -y jq || true
+          sudo rm -f "$(command -v jq || true)" 2>/dev/null || true
+          ! command -v jq
           curl -fsSLo sops https://github.com/getsops/sops/releases/download/v3.13.3/sops-v3.13.3.linux.amd64
           sudo install -m 0755 sops /usr/local/bin/sops && rm sops
       - name: Lint
