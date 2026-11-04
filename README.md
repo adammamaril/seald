@@ -1,9 +1,8 @@
 <div align="center">
   <img src="assets/seald.svg" width="160" alt="A little seal holding an envelope">
   <h1>seald</h1>
-  <p><strong>One command for every credential, for operators and agents.</strong></p>
-  <p>Type a secret once at a hidden prompt. It lands in one encrypted <a href="https://github.com/getsops/sops">SOPS</a> + <a href="https://github.com/FiloSottile/age">age</a> ledger, and your daemons, scripts and agents get it as environment variables. One Bash script, no daemon.</p>
-
+  <p><strong>One command for every credential, for operators and agents.</strong><br>
+  Hidden prompt in → <a href="https://github.com/getsops/sops">SOPS</a> + <a href="https://github.com/FiloSottile/age">age</a> ledger → env vars out. One Bash script, no daemon.</p>
   <p>
     <a href="https://github.com/adammamaril/seald/actions/workflows/ci.yml"><img src="https://img.shields.io/github/actions/workflow/status/adammamaril/seald/ci.yml?branch=main&style=flat-square&color=22c55e&label=tests" alt="CI"></a>
     <img src="https://img.shields.io/badge/bash-shellcheck%20clean-27272a?style=flat-square" alt="Bash, shellcheck clean">
