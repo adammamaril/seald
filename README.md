@@ -1,6 +1,6 @@
 <div align="center">
   <img src="assets/seald.svg" width="160" alt="A little seal holding an envelope">
-  <h1>seal</h1>
+  <h1>seald</h1>
   <p><strong>Seal a YAML secrets file to age public keys. Commit the ciphertext. Never leak the plaintext.</strong></p>
   <p>One small, auditable Bash command in front of <a href="https://github.com/getsops/sops">SOPS</a> and <a href="https://github.com/FiloSottile/age">age</a>, for GitOps repos that hold encrypted secrets.</p>
 
