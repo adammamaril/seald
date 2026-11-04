@@ -20,13 +20,55 @@ git clone https://github.com/adammamaril/seald && cd seald
 ./seal exec -- gh repo list      # gh sees $GITHUB_TOKEN; your shell never does
 ```
 
-`seal` is one self-contained Bash script: run it from the clone, or copy it anywhere. Needs Bash, [sops](https://github.com/getsops/sops) and [jq](https://jqlang.github.io/jq/). Need them? Run `./scripts/install-deps.sh` (or `make deps`). It uses brew, apt, pacman or dnf, and fetches a checksum-verified sops release if your distro doesn't package it. `seal` also needs an age identity, so if you don't have one yet, run this once (it uses `age-keygen`):
+`seal` is one self-contained Bash script: run it from the clone, or copy it anywhere. Needs Bash, [sops](https://github.com/getsops/sops) and [jq](https://jqlang.github.io/jq/). See [Prerequisites](#prerequisites). `seal` also needs an age identity, so if you don't have one yet, run this once (it uses `age-keygen`):
 
 ```sh
 mkdir -p ~/.config/sops/age
 age-keygen -o ~/.config/sops/age/keys.txt                                   # private: sops decrypts with this
 age-keygen -y ~/.config/sops/age/keys.txt > ~/.config/sops/age/pubs.txt     # public: seal encrypts to this
 ```
+
+## Prerequisites
+
+`seal` needs [sops](https://github.com/getsops/sops), [age](https://github.com/FiloSottile/age) and [jq](https://jqlang.github.io/jq/).
+
+<details>
+<summary><b>macOS</b></summary>
+
+```sh
+brew install sops age jq
+```
+</details>
+
+<details>
+<summary><b>Ubuntu / Debian</b></summary>
+
+```sh
+sudo apt install age jq
+curl -fsSLo sops https://github.com/getsops/sops/releases/download/v3.13.3/sops-v3.13.3.linux.amd64
+sudo install -m 0755 sops /usr/local/bin/sops && rm sops     # arm64: swap amd64 for arm64
+```
+</details>
+
+<details>
+<summary><b>Arch Linux</b></summary>
+
+```sh
+sudo pacman -S sops age jq
+```
+</details>
+
+<details>
+<summary><b>Fedora</b></summary>
+
+```sh
+sudo dnf install age jq
+curl -fsSLo sops https://github.com/getsops/sops/releases/download/v3.13.3/sops-v3.13.3.linux.amd64
+sudo install -m 0755 sops /usr/local/bin/sops && rm sops     # arm64: swap amd64 for arm64
+```
+</details>
+
+Other platforms: [sops releases](https://github.com/getsops/sops/releases) · [age install](https://github.com/FiloSottile/age#installation).
 
 ## Usage
 
@@ -135,7 +177,7 @@ The test suite in [`tests/`](tests) exercises these behaviours.
 
 ```sh
 make test                      # needs age-keygen, sops and jq; tests skip without them
-shellcheck seal scripts/install-deps.sh
+shellcheck seal
 ```
 
 Optional: put `seal` on your PATH instead of running `./seal`:

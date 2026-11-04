@@ -1,10 +1,7 @@
 PREFIX ?= $(HOME)/.local
 BINDIR ?= $(PREFIX)/bin
 
-.PHONY: deps install uninstall test
-
-deps:
-	./scripts/install-deps.sh
+.PHONY: install uninstall test
 
 install:
 	install -d "$(BINDIR)"
