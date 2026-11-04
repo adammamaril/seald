@@ -15,12 +15,12 @@
 ## Quickstart
 
 ```sh
-git clone https://github.com/adammamaril/seald && make -C seald install    # → ~/.local/bin/seal
-seal set GITHUB_TOKEN                                                       # hidden prompt, asked twice
-seal exec -- gh repo list                                                   # gh sees $GITHUB_TOKEN; your shell never does
+git clone https://github.com/adammamaril/seald && cd seald
+./seal set GITHUB_TOKEN          # hidden prompt, asked twice
+./seal exec -- gh repo list      # gh sees $GITHUB_TOKEN; your shell never does
 ```
 
-Needs Bash, [sops](https://github.com/getsops/sops) and [jq](https://jqlang.github.io/jq/). `seal` also needs an age identity, so if you don't have one yet, run this once (it uses `age-keygen`):
+`seal` is one self-contained Bash script: run it from the clone, or copy it anywhere. Needs Bash, [sops](https://github.com/getsops/sops) and [jq](https://jqlang.github.io/jq/). `seal` also needs an age identity, so if you don't have one yet, run this once (it uses `age-keygen`):
 
 ```sh
 mkdir -p ~/.config/sops/age
@@ -76,15 +76,6 @@ seal list                             # safe to show an agent: names only
 
 **Storing a secret.** The value goes from a hidden prompt through a pipe into `sops set`. It never appears in a command line, a plaintext file, or on screen:
 
-<picture>
-  <source media="(prefers-color-scheme: dark)" srcset="assets/diagram-set-dark.svg">
-  <source media="(prefers-color-scheme: light)" srcset="assets/diagram-set-light.svg">
-  <img alt="seal set: key name check, hidden prompt asked twice, recipients on first set, printf piped through jq into sops set, stored in the 0600 ledger" src="assets/diagram-set-light.svg" width="900">
-</picture>
-
-<details>
-<summary>Text version</summary>
-
 ```
  seal set GITHUB_TOKEN   (you type the value; plaintext)
       │
@@ -106,29 +97,15 @@ seal list                             # safe to show an agent: names only
             ~/.local/share/seal/secrets.enc.yaml (ciphertext, 0600)
 ```
 
-</details>
+**Using your secrets.** One ledger, three ways out:
 
-**Using your secrets.** `exec` hands secrets to a process as environment variables, `get` prints one, and `list` shows names only. `seal file` is a separate lane that doesn't touch the ledger:
-
-<picture>
-  <source media="(prefers-color-scheme: dark)" srcset="assets/diagram-consume-dark.svg">
-  <source media="(prefers-color-scheme: light)" srcset="assets/diagram-consume-light.svg">
-  <img alt="The ledger feeds seal exec (env vars, recommended), seal get (plaintext on stdout) and seal list (names only); separately, seal file encrypts IN.yaml to OUT.enc.yaml" src="assets/diagram-consume-light.svg" width="900">
-</picture>
-
-<details>
-<summary>Text version</summary>
-
-```mermaid
-flowchart LR
-  L["ledger<br/>secrets.enc.yaml<br/>(ciphertext, 0600)"]
-  L --> X["seal exec -- CMD<br/>sops exec-env"] --> XE["CMD sees keys as env vars<br/>daemons · agents · scripts"]
-  L --> G["seal get KEY<br/>sops -d --extract"] --> GE["plaintext on stdout<br/>terminal · logs · agent context"]
-  L --> LS["seal list"] --> LE["names only"]
-  I["IN.yaml<br/>(plaintext, stays on disk)"] --> F["seal file -r/-R/-f"] --> O["OUT.enc.yaml<br/>(ciphertext, 0600)"]
+```
+                       ┌──▶ seal exec -- CMD   CMD gets every key as an env var   ◀ agents: use this
+ secrets.enc.yaml  ────┼──▶ seal get KEY       the value, in plaintext, on stdout
+ (ciphertext, 0600)    └──▶ seal list          key names only
 ```
 
-</details>
+`seal file IN.yaml OUT.enc.yaml` is a separate batch lane: it encrypts a whole YAML file and never touches the ledger.
 
 ## What it guarantees
 
@@ -158,8 +135,13 @@ The test suite in [`tests/`](tests) exercises these behaviours.
 
 ```sh
 make test                      # needs age-keygen, sops and jq; tests skip without them
-shellcheck bin/seal
-make install PREFIX=/usr/local # or uninstall
+shellcheck seal
+```
+
+Optional: put `seal` on your PATH instead of running `./seal`:
+
+```sh
+make install                   # → ~/.local/bin/seal   (PREFIX=/usr/local to change, make uninstall to undo)
 ```
 
 ## License

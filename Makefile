@@ -5,7 +5,7 @@ BINDIR ?= $(PREFIX)/bin
 
 install:
 	install -d "$(BINDIR)"
-	install -m 0755 bin/seal "$(BINDIR)/seal"
+	install -m 0755 seal "$(BINDIR)/seal"
 
 uninstall:
 	rm -f "$(BINDIR)/seal"

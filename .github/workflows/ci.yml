@@ -13,10 +13,10 @@ jobs:
           curl -fsSLo sops.deb https://github.com/getsops/sops/releases/download/v3.13.3/sops_3.13.3_amd64.deb
           sudo apt-get install -y ./sops.deb && rm sops.deb
       - name: Lint
-        run: shellcheck bin/seal
+        run: shellcheck seal
       - name: Test
         run: make test
       - name: Install and run from PATH
         run: |
           make install PREFIX="$HOME/.local"
-          SEAL_CLI="$HOME/.local/bin/seal" python3 -m unittest discover -s tests
+          SEAL_CLI="$HOME/.local/seal" python3 -m unittest discover -s tests

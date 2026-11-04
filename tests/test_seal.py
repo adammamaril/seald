@@ -8,7 +8,7 @@ import tempfile
 import time
 import unittest
 
-SEAL = os.environ.get('SEAL_CLI', str(Path(__file__).resolve().parents[1] / 'bin' / 'seal'))
+SEAL = os.environ.get('SEAL_CLI', str(Path(__file__).resolve().parents[1] / 'seal'))
 HAVE = all(shutil.which(t) for t in ('sops', 'jq', 'age-keygen'))
 VALUE = 'line one\nit\'s "quoted" $HOME \\n {braces}\nlast'
 
