@@ -1,64 +1,230 @@
 #!/usr/bin/env bash
-# seal — encrypt a YAML secrets file to one or more age recipients with SOPS.
+# seal — a tiny encrypted secrets ledger: one SOPS + age YAML file, no daemon.
 #
 # Usage:
-#   seal [-r AGE_PUBLIC_KEY]... [-R RECIPIENTS_FILE] [-f] INPUT.yaml OUTPUT.enc.yaml
+#   seal [-l LEDGER] set KEY [--stdin]   store a secret (a second `set` rotates it).
+#                                        Hidden prompt, asked twice; or the whole value is
+#                                        read from stdin when stdin is not a terminal or
+#                                        --stdin is given:  printf %s "$VAL" | seal set KEY
+#   seal [-l LEDGER] get KEY             print the secret to stdout
+#   seal [-l LEDGER] list                list key names (never values)
+#   seal [-l LEDGER] rm KEY              delete a key
+#   seal [-l LEDGER] exec -- CMD [ARG]...  run CMD with every key as an environment variable
+#   seal file [-r KEY]... [-R FILE] [-f] INPUT.yaml OUTPUT.enc.yaml
+#                                        encrypt a whole YAML file; the ledger is not used
 #
-# Recipients (age public keys, "age1...") come from -r (repeatable), from -R
-# (one key per line; blank lines and # comments ignored), or from the
-# SEAL_RECIPIENTS environment variable (comma-separated). At least one is required.
+# KEY must match [A-Za-z_][A-Za-z0-9_]* (it becomes an environment variable name).
+#
+# Ledger: -l FILE or SEAL_LEDGER, default ~/.local/share/seal/secrets.enc.yaml (mode 0600).
+#   It is created by the first `set`, encrypted to the age recipients (public keys, age1...)
+#   in SEAL_RECIPIENTS (comma-separated) or, if that is unset, in the file SEAL_RECIPIENTS_FILE
+#   (default ~/.config/sops/age/pubs.txt; lines matching ^age1[0-9a-z]{58}$ are used).
+#   Decryption uses sops' usual identity (SOPS_AGE_KEY_FILE or ~/.config/sops/age/keys.txt).
+#
+# `seal file` takes recipients from -r (repeatable), -R FILE (one per line; blank lines and
+#   # comments ignored) and SEAL_RECIPIENTS; if none are given it falls back to the same
+#   default recipients file as the ledger. An existing OUTPUT is kept unless -f is given.
 #
 # Guarantees:
-#   * OUTPUT is mode 0600 from the moment it is created.
-#   * Plaintext is never copied anywhere: sops reads INPUT and writes ciphertext.
-#   * OUTPUT is only replaced on success, and an existing OUTPUT is kept unless -f is given.
-#   * Prints only the output path (stdout) and a status line (stderr), never a secret.
+#   * Secrets are never in argv and never on disk in clear; only `get` prints one.
+#   * Files are written via a temporary file and moved into place; modes are 0600.
+#   * Refuses to run under xtrace.
 #
-# Requires: sops. Decrypt with: SOPS_AGE_KEY_FILE=~/.config/sops/age/keys.txt sops -d OUTPUT
+# Requires: sops, jq (jq for the ledger commands only).
+
 set -euo pipefail
 umask 077
 case $- in *x*) echo "seal: refusing to run with xtrace on" >&2; exit 2 ;; esac
 
+AGE_RE='^age1[0-9a-z]{58}$'
+KEY_RE='^[A-Za-z_][A-Za-z0-9_]*$'
+tmp=""
+trap 'if [ -n "$tmp" ]; then rm -f "$tmp"; fi' EXIT
+
 die() { printf 'seal: %s\n' "$1" >&2; exit 1; }
 usage() { sed -n '2,/^$/p' "$0" | sed 's/^# \{0,1\}//' >&2; exit "${1:-2}"; }
+need() { command -v "$1" >/dev/null 2>&1 || die "$1 is required; install it first"; }
+shq() { local s=$1; s=${s//\'/"'\\''"}; printf "'%s'" "$s"; }
+valid_key() { [[ ${1:-} =~ $KEY_RE ]] || die "bad key name '${1:-}': use letters, digits and _, not starting with a digit"; }
 
-recipients=()
-force=0
-if [ -n "${SEAL_RECIPIENTS:-}" ]; then IFS=, read -r -a recipients <<<"$SEAL_RECIPIENTS"; fi
+# Append recipients from the default sources to the global `recipients` array.
+env_recipients() {
+  local r
+  if [ -n "${SEAL_RECIPIENTS:-}" ]; then
+    IFS=, read -r -a _env <<<"$SEAL_RECIPIENTS"
+    for r in "${_env[@]}"; do r=${r//[[:space:]]/}; if [ -n "$r" ]; then recipients+=("$r"); fi; done
+  fi
+}
+default_file_recipients() {
+  local f=${SEAL_RECIPIENTS_FILE:-${HOME:-}/.config/sops/age/pubs.txt} line
+  [ -r "$f" ] || return 0
+  while IFS= read -r line; do recipients+=("$line"); done < <(grep -E "$AGE_RE" "$f" || true)
+}
+no_recipients() { die "no recipients; use $1SEAL_RECIPIENTS or put age public keys in SEAL_RECIPIENTS_FILE (default ~/.config/sops/age/pubs.txt)"; }
+join_recipients() { local IFS=,; printf '%s' "$*"; }
 
-while getopts ':r:R:fh' opt; do
+# ---- ledger commands -------------------------------------------------------------------
+
+ORIG=$PWD
+resolve_ledger() {
+  case $ledger in /*) ;; *) ledger=$PWD/$ledger ;; esac
+  ldir=$(dirname "$ledger"); lbase=$(basename "$ledger")
+}
+enter_ledger() {  # ledger must exist; cd so a stray .sops.yaml elsewhere cannot apply
+  need sops; need jq
+  resolve_ledger
+  [ -f "$ledger" ] || die "no ledger at $ledger; create it with: seal set KEY"
+  cd "$ldir"
+}
+key_names() { sops -d --output-type json "$lbase" | jq -r 'keys[]'; }
+require_key() {
+  local names
+  names=$(key_names) || die "cannot decrypt $ledger"
+  printf '%s\n' "$names" | grep -qxF -- "$1" || die "$1 not found"
+}
+
+new_ledger() {  # $1 = comma-joined recipients; --config /dev/null: no stray .sops.yaml may apply
+  tmp=$(mktemp "$ldir/.seal.XXXXXX")
+  printf '{}\n' | sops --config /dev/null --encrypt --age "$1" --input-type yaml --output-type yaml /dev/stdin >"$tmp" \
+    || die "could not create $ledger"
+  chmod 0600 "$tmp"; mv -f "$tmp" "$lbase"; tmp=""
+}
+
+read_value() {  # sets `value`
+  local again
+  if [ "$from_stdin" = 1 ] || [ ! -t 0 ]; then
+    IFS= read -r -d '' value || true
+    [ -n "$value" ] || die "empty value on stdin; nothing stored"
+    return
+  fi
+  while :; do
+    read -rs -p "  value for $key: " value || die "no input"; echo >&2
+    read -rs -p "  again: " again || die "no input"; echo >&2
+    [ -n "$value" ] && [ "$value" = "$again" ] && break
+    echo "  empty or did not match; try again" >&2
+  done
+}
+
+cmd_set() {
+  local key="" from_stdin=0 a value rcpts=""
+  for a in "$@"; do
+    case $a in
+      --stdin) from_stdin=1 ;;
+      -*) usage ;;
+      *) [ -z "$key" ] || usage; key=$a ;;
+    esac
+  done
+  [ -n "$key" ] || usage
+  valid_key "$key"
+  need sops; need jq
+  resolve_ledger
+  if [ ! -e "$ledger" ]; then
+    recipients=(); env_recipients
+    if [ ${#recipients[@]} -eq 0 ]; then default_file_recipients; fi
+    for a in ${recipients[@]+"${recipients[@]}"}; do [[ $a =~ $AGE_RE ]] || die "not an age public key: $a"; done
+    [ ${#recipients[@]} -gt 0 ] || no_recipients ""
+    rcpts=$(join_recipients "${recipients[@]}")
+  fi
+  read_value
+  mkdir -p "$ldir"
+  cd "$ldir"
+  if [ -n "$rcpts" ]; then new_ledger "$rcpts"; fi
+  printf '%s' "$value" | jq -Rs . | sops set --value-stdin "$lbase" "[\"$key\"]" \
+    || die "could not store $key"
+  chmod 0600 "$lbase"
+  printf 'seal: stored %s in %s\n' "$key" "$ledger" >&2
+}
+
+cmd_get() {
+  [ $# -eq 1 ] || usage
+  valid_key "$1"; enter_ledger; require_key "$1"
+  exec sops -d --extract "[\"$1\"]" "$lbase"
+}
+
+cmd_list() {
+  [ $# -eq 0 ] || usage
+  enter_ledger
+  key_names || die "cannot decrypt $ledger"
+}
+
+cmd_rm() {
+  [ $# -eq 1 ] || usage
+  valid_key "$1"; enter_ledger; require_key "$1"
+  sops unset "$lbase" "[\"$1\"]" || die "could not remove $1"
+  chmod 0600 "$lbase"
+  printf 'seal: removed %s\n' "$1" >&2
+}
+
+cmd_exec() {
+  if [ "${1:-}" = -- ]; then shift; fi
+  [ $# -gt 0 ] || usage
+  enter_ledger
+  local line a
+  line="cd -- $(shq "$ORIG") && exec"  # the ledger dir is only for sops, not for the command
+  for a in "$@"; do line+=" $(shq "$a")"; done
+  exec sops exec-env "$lbase" "$line"
+}
+
+# ---- file mode: encrypt a whole YAML file ------------------------------------------------
+
+cmd_file() {
+  local OPTIND=1 opt r line force=0 input output joined
+  recipients=(); env_recipients
+  while getopts ':r:R:fh' opt; do
+    case $opt in
+      r) recipients+=("$OPTARG") ;;
+      R) [ -r "$OPTARG" ] || die "cannot read recipients file: $OPTARG"
+         while IFS= read -r line || [ -n "$line" ]; do
+           line="${line%%#*}"; line="${line//[[:space:]]/}"
+           if [ -n "$line" ]; then recipients+=("$line"); fi
+         done <"$OPTARG" ;;
+      f) force=1 ;;
+      h) usage 0 ;;
+      *) usage ;;
+    esac
+  done
+  shift $((OPTIND - 1))
+  [ $# -eq 2 ] || usage
+  input=$1 output=$2
+  if [ ${#recipients[@]} -eq 0 ]; then default_file_recipients; fi
+  [ ${#recipients[@]} -gt 0 ] || no_recipients "-r, -R, "
+  for r in "${recipients[@]}"; do
+    case $r in age1[a-z0-9]*) ;; *) die "not an age public key: $r" ;; esac
+  done
+  [ -r "$input" ] || die "cannot read input: $input"
+  [ "$force" = 1 ] || [ ! -e "$output" ] || die "$output exists; use -f to replace it"
+  need sops
+
+  tmp=$(mktemp "$output.XXXXXX")
+  joined=$(join_recipients "${recipients[@]}")
+  sops --encrypt --age "$joined" --input-type yaml --output-type yaml "$input" >"$tmp" \
+    || die "sops encryption failed"
+  chmod 0600 "$tmp"
+  mv -f "$tmp" "$output"; tmp=""
+
+  printf 'seal: sealed to %d recipient(s) -> %s\n' "${#recipients[@]}" "$output" >&2
+  printf '%s\n' "$output"
+}
+
+# ---- main ------------------------------------------------------------------------------
+
+ledger=${SEAL_LEDGER:-${HOME:-}/.local/share/seal/secrets.enc.yaml}
+while getopts ':l:h' opt; do
   case $opt in
-    r) recipients+=("$OPTARG") ;;
-    R) [ -r "$OPTARG" ] || die "cannot read recipients file: $OPTARG"
-       while IFS= read -r line; do
-         line="${line%%#*}"; line="${line//[[:space:]]/}"
-         [ -n "$line" ] && recipients+=("$line")
-       done <"$OPTARG" ;;
-    f) force=1 ;;
+    l) ledger=$OPTARG ;;
     h) usage 0 ;;
     *) usage ;;
   esac
 done
 shift $((OPTIND - 1))
-
-[ $# -eq 2 ] || usage
-input=$1 output=$2
-[ ${#recipients[@]} -gt 0 ] || die "no recipients; use -r, -R or SEAL_RECIPIENTS"
-for r in "${recipients[@]}"; do
-  case $r in age1[a-z0-9]*) ;; *) die "not an age public key: $r" ;; esac
-done
-[ -r "$input" ] || die "cannot read input: $input"
-[ "$force" = 1 ] || [ ! -e "$output" ] || die "$output exists; use -f to replace it"
-command -v sops >/dev/null 2>&1 || die "sops is required; install it first"
-
-tmp=$(mktemp "$output.XXXXXX")
-trap 'rm -f "$tmp"' EXIT
-
-joined=$(IFS=,; printf '%s' "${recipients[*]}")
-sops --encrypt --age "$joined" --input-type yaml --output-type yaml "$input" >"$tmp" \
-  || die "sops encryption failed"
-chmod 0600 "$tmp"
-mv -f "$tmp" "$output"
-
-printf 'seal: sealed to %d recipient(s) -> %s\n' "${#recipients[@]}" "$output" >&2
-printf '%s\n' "$output"
+[ $# -ge 1 ] || usage
+action=$1; shift
+case $action in
+  set) cmd_set "$@" ;;
+  get) cmd_get "$@" ;;
+  list) cmd_list "$@" ;;
+  rm) cmd_rm "$@" ;;
+  exec) cmd_exec "$@" ;;
+  file) cmd_file "$@" ;;
+  *) usage ;;
+esac

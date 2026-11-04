@@ -1,0 +1,52 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 900 520" width="900" height="520" role="img" aria-label="seal: using your secrets">
+<title>seal: using your secrets</title>
+<defs>
+  <filter id="sh" x="-10%" y="-20%" width="120%" height="150%"><feDropShadow dx="0" dy="2" stdDeviation="4" flood-color="#000000" flood-opacity="0.5"/></filter>
+  <marker id="ar" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#52525b"/></marker>
+  <marker id="are" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#34d399"/></marker>
+</defs>
+<rect width="900" height="520" rx="16" fill="#0a0b0e" stroke="#2a2b31" stroke-width="1"/>
+<rect x="32" y="110" width="210" height="100" rx="12" fill="#071a13" stroke="#145c43" stroke-width="1" filter="url(#sh)"/>
+<text x="137" y="146" fill="#f4f4f5" font-family="ui-sans-serif, -apple-system, 'Segoe UI', Inter, sans-serif" font-size="16" font-weight="700" text-anchor="middle">ledger</text>
+<text x="137" y="168" fill="#f4f4f5" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="13" font-weight="400" text-anchor="middle">secrets.enc.yaml</text>
+<text x="137" y="190" fill="#34d399" font-family="ui-sans-serif, -apple-system, 'Segoe UI', Inter, sans-serif" font-size="11" font-weight="700" text-anchor="middle">CIPHERTEXT · 0600</text>
+<path d="M242,160 C280,160 280,72 318,72" stroke="#34d399" stroke-width="1.5" fill="none" marker-end="url(#are)"/>
+<rect x="322" y="40" width="230" height="64" rx="12" fill="#141519" stroke="#145c43" stroke-width="1" filter="url(#sh)"/>
+<text x="437" y="68" fill="#f4f4f5" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="14" font-weight="600" text-anchor="middle">seal exec -- CMD</text>
+<text x="437" y="88" fill="#a1a1aa" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12" font-weight="400" text-anchor="middle">sops exec-env</text>
+<path d="M552,72 L592,72" stroke="#34d399" stroke-width="1.5" fill="none" marker-end="url(#are)"/>
+<rect x="596" y="40" width="276" height="64" rx="12" fill="#141519" stroke="#145c43" stroke-width="1" filter="url(#sh)"/>
+<text x="734" y="68" fill="#f4f4f5" font-family="ui-sans-serif, -apple-system, 'Segoe UI', Inter, sans-serif" font-size="13" font-weight="600" text-anchor="middle">CMD sees keys as env vars</text>
+<text x="734" y="88" fill="#34d399" font-family="ui-sans-serif, -apple-system, 'Segoe UI', Inter, sans-serif" font-size="12" font-weight="400" text-anchor="middle">daemons · agents · scripts</text>
+<text x="872" y="32" fill="#34d399" font-family="ui-sans-serif, -apple-system, 'Segoe UI', Inter, sans-serif" font-size="10" font-weight="700" text-anchor="end">RECOMMENDED</text>
+<path d="M242,160 C280,160 280,162 318,162" stroke="#52525b" stroke-width="1.5" fill="none" marker-end="url(#ar)"/>
+<rect x="322" y="130" width="230" height="64" rx="12" fill="#141519" stroke="#2a2b31" stroke-width="1" filter="url(#sh)"/>
+<text x="437" y="158" fill="#f4f4f5" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="14" font-weight="600" text-anchor="middle">seal get KEY</text>
+<text x="437" y="178" fill="#a1a1aa" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12" font-weight="400" text-anchor="middle">sops -d --extract</text>
+<path d="M552,162 L592,162" stroke="#52525b" stroke-width="1.5" fill="none" marker-end="url(#ar)"/>
+<rect x="596" y="130" width="276" height="64" rx="12" fill="#1f1708" stroke="#78501a" stroke-width="1" filter="url(#sh)"/>
+<text x="734" y="158" fill="#f4f4f5" font-family="ui-sans-serif, -apple-system, 'Segoe UI', Inter, sans-serif" font-size="13" font-weight="600" text-anchor="middle">plaintext on stdout</text>
+<text x="734" y="178" fill="#fbbf24" font-family="ui-sans-serif, -apple-system, 'Segoe UI', Inter, sans-serif" font-size="12" font-weight="400" text-anchor="middle">terminal · logs · agent context</text>
+<path d="M242,160 C280,160 280,252 318,252" stroke="#52525b" stroke-width="1.5" fill="none" marker-end="url(#ar)"/>
+<rect x="322" y="220" width="230" height="64" rx="12" fill="#141519" stroke="#2a2b31" stroke-width="1" filter="url(#sh)"/>
+<text x="437" y="248" fill="#f4f4f5" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="14" font-weight="600" text-anchor="middle">seal list</text>
+<text x="437" y="268" fill="#a1a1aa" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12" font-weight="400" text-anchor="middle">key names</text>
+<path d="M552,252 L592,252" stroke="#52525b" stroke-width="1.5" fill="none" marker-end="url(#ar)"/>
+<rect x="596" y="220" width="276" height="64" rx="12" fill="#141519" stroke="#2a2b31" stroke-width="1" filter="url(#sh)"/>
+<text x="734" y="257" fill="#f4f4f5" font-family="ui-sans-serif, -apple-system, 'Segoe UI', Inter, sans-serif" font-size="13" font-weight="600" text-anchor="middle">names only, never values</text>
+<path d="M32,318 L868,318" stroke="#2a2b31" stroke-width="1" stroke-dasharray="4 4"/>
+<text x="32" y="346" fill="#a1a1aa" font-family="ui-sans-serif, -apple-system, 'Segoe UI', Inter, sans-serif" font-size="11" font-weight="700" text-anchor="start">BATCH LANE · seal file (the ledger is not used)</text>
+<rect x="32" y="370" width="190" height="64" rx="12" fill="#1f1708" stroke="#78501a" stroke-width="1" filter="url(#sh)"/>
+<text x="127" y="398" fill="#f4f4f5" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="14" font-weight="600" text-anchor="middle">IN.yaml</text>
+<text x="127" y="418" fill="#fbbf24" font-family="ui-sans-serif, -apple-system, 'Segoe UI', Inter, sans-serif" font-size="10" font-weight="700" text-anchor="middle">PLAINTEXT · STAYS ON DISK</text>
+<path d="M222,402 L262,402" stroke="#52525b" stroke-width="1.5" fill="none" marker-end="url(#ar)"/>
+<rect x="266" y="370" width="290" height="64" rx="12" fill="#141519" stroke="#2a2b31" stroke-width="1" filter="url(#sh)"/>
+<text x="411" y="398" fill="#f4f4f5" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="13" font-weight="600" text-anchor="middle">seal file IN.yaml OUT.enc.yaml</text>
+<text x="411" y="418" fill="#a1a1aa" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12" font-weight="400" text-anchor="middle">-r age1…  ·  -R FILE  ·  -f to replace</text>
+<path d="M556,402 L592,402" stroke="#34d399" stroke-width="1.5" fill="none" marker-end="url(#are)"/>
+<rect x="596" y="370" width="276" height="64" rx="12" fill="#071a13" stroke="#145c43" stroke-width="1" filter="url(#sh)"/>
+<text x="734" y="398" fill="#f4f4f5" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="14" font-weight="600" text-anchor="middle">OUT.enc.yaml</text>
+<text x="734" y="418" fill="#34d399" font-family="ui-sans-serif, -apple-system, 'Segoe UI', Inter, sans-serif" font-size="11" font-weight="700" text-anchor="middle">CIPHERTEXT · 0600 · commit it</text>
+<text x="32" y="476" fill="#a1a1aa" font-family="ui-sans-serif, -apple-system, 'Segoe UI', Inter, sans-serif" font-size="12" font-weight="400" text-anchor="start">Anyone holding a matching age identity can decrypt: sops -d OUT.enc.yaml</text>
+<text x="32" y="496" fill="#a1a1aa" font-family="ui-sans-serif, -apple-system, 'Segoe UI', Inter, sans-serif" font-size="12" font-weight="400" text-anchor="start">stdout prints only the output path.</text>
+</svg>
