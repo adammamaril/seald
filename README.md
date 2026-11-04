@@ -89,17 +89,11 @@ Ledger: `~/.local/share/seal/secrets.enc.yaml` (`-l` / `SEAL_LEDGER`). Recipient
 ## Development
 
 ```sh
-make test && shellcheck seal     # optional: make install → ~/.local/bin/seal
+python3 -m unittest discover -s tests && shellcheck seal     # install: cp seal ~/.local/bin/
 ```
 
 ## License
 
 MIT © 2026 Genga Labs. See [LICENSE](LICENSE).
-
-<details>
-<summary>Logo artwork</summary>
-<br>
-<img src="assets/logo-finals.jpg" alt="seal·d logo finals: mascot and badge variants">
-</details>
 
 <p align="center"><sub>Built and maintained by <strong>Genga Labs</strong>.</sub></p>
