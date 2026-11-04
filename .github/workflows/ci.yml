@@ -19,4 +19,4 @@ jobs:
       - name: Install and run from PATH
         run: |
           make install PREFIX="$HOME/.local"
-          SEAL_CLI="$HOME/.local/seal" python3 -m unittest discover -s tests
+          SEAL_CLI="$HOME/.local/bin/seal" python3 -m unittest discover -s tests
