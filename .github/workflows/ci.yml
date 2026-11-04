@@ -7,13 +7,13 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Install age, sops, shellcheck
+      - name: Install dependencies (dogfoods scripts/install-deps.sh)
         run: |
-          sudo apt-get update && sudo apt-get install -y age shellcheck
-          curl -fsSLo sops.deb https://github.com/getsops/sops/releases/download/v3.13.3/sops_3.13.3_amd64.deb
-          sudo apt-get install -y ./sops.deb && rm sops.deb
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+          ./scripts/install-deps.sh
+          sudo apt-get install -y shellcheck
       - name: Lint
-        run: shellcheck seal
+        run: shellcheck seal scripts/install-deps.sh
       - name: Test
         run: make test
       - name: Install and run from PATH

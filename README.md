@@ -20,7 +20,7 @@ git clone https://github.com/adammamaril/seald && cd seald
 ./seal exec -- gh repo list      # gh sees $GITHUB_TOKEN; your shell never does
 ```
 
-`seal` is one self-contained Bash script: run it from the clone, or copy it anywhere. Needs Bash, [sops](https://github.com/getsops/sops) and [jq](https://jqlang.github.io/jq/). `seal` also needs an age identity, so if you don't have one yet, run this once (it uses `age-keygen`):
+`seal` is one self-contained Bash script: run it from the clone, or copy it anywhere. Needs Bash, [sops](https://github.com/getsops/sops) and [jq](https://jqlang.github.io/jq/). Need them? Run `./scripts/install-deps.sh` (or `make deps`). It uses brew, apt, pacman or dnf, and fetches a checksum-verified sops release if your distro doesn't package it. `seal` also needs an age identity, so if you don't have one yet, run this once (it uses `age-keygen`):
 
 ```sh
 mkdir -p ~/.config/sops/age
@@ -135,7 +135,7 @@ The test suite in [`tests/`](tests) exercises these behaviours.
 
 ```sh
 make test                      # needs age-keygen, sops and jq; tests skip without them
-shellcheck seal
+shellcheck seal scripts/install-deps.sh
 ```
 
 Optional: put `seal` on your PATH instead of running `./seal`:
