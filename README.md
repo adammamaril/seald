@@ -11,18 +11,9 @@
   </p>
 </div>
 
-## Quickstart
-
-```sh
-git clone https://github.com/adammamaril/seald && cd seald
-./seal set GITHUB_TOKEN          # hidden prompt, asked twice
-./seal exec -- gh repo list      # gh sees $GITHUB_TOKEN; your shell never does
-```
 ## Requirements
 
 Needs only [sops](https://github.com/getsops/sops), plus [age](https://github.com/FiloSottile/age) to make your key:
-
-<summary><b>Install them</b> (macOS · Arch · Debian/Ubuntu · Fedora)</summary>
 
 ```sh
 brew install sops age               # macOS
@@ -33,12 +24,20 @@ curl -fsSLo sops https://github.com/getsops/sops/releases/download/v3.13.3/sops-
 sudo install -m 0755 sops /usr/local/bin/sops && rm sops
 ```
 
-No age key yet? Run once: 
+No age key yet? Run once:
 
 ```sh
 mkdir -p ~/.config/sops/age
 age-keygen -o ~/.config/sops/age/keys.txt                                   # private
 age-keygen -y ~/.config/sops/age/keys.txt > ~/.config/sops/age/pubs.txt     # public: seal encrypts to these
+```
+
+## Quickstart
+
+```sh
+git clone https://github.com/adammamaril/seald && cd seald
+./seal set GITHUB_TOKEN          # hidden prompt, asked twice
+./seal exec -- gh repo list      # gh sees $GITHUB_TOKEN; your shell never does
 ```
 
 ## Usage
@@ -78,7 +77,7 @@ Ledger: `~/.local/share/seal/secrets.enc.yaml` (`-l` / `SEAL_LEDGER`). Recipient
 ```
 
 - **Secrets never touch argv, disk in clear, or your screen.** Values move through pipes into `sops set --value-stdin`; files are 0600; only `get` prints a value; `seal` refuses to run under `bash -x`.
-- **Tested:** 29 tests, including a pseudo-terminal check that the prompt never echoes.
+- **Tested:** a unittest suite, including a pseudo-terminal check that the prompt never echoes.
 
 ## Keep in mind
 
