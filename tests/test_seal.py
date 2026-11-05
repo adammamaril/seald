@@ -2,6 +2,7 @@ import os
 from pathlib import Path
 import pty
 import select
+import signal
 import shutil
 import subprocess
 import tempfile
@@ -25,7 +26,7 @@ class Base(unittest.TestCase):
         self.pub = subprocess.run(['age-keygen', '-y', str(self.key)], check=True, capture_output=True, text=True).stdout.strip()
         self.ledger = self.tmp / 'work' / 'secrets.enc.yaml'
         self.env = {k: v for k, v in os.environ.items()
-                    if not k.startswith(('SEAL_', 'SOPS_')) and k != 'BASH_XTRACEFD'}
+                    if not k.startswith(('SEAL_', 'SOPS_')) and k not in ('BASH_XTRACEFD', 'XDG_CONFIG_HOME')}
         self.env.update(HOME=str(self.home), SOPS_AGE_KEY_FILE=str(self.key),
                         SEAL_LEDGER=str(self.ledger), SEAL_RECIPIENTS=self.pub)
 
@@ -240,6 +241,17 @@ class PromptTests(Base):
         self.addCleanup(lambda: os.close(master) if master is not None else None)
         return pid, master
 
+    def wait_exit(self, pid, timeout=10):
+        deadline = time.monotonic() + timeout
+        while time.monotonic() < deadline:
+            done, status = os.waitpid(pid, os.WNOHANG)
+            if done:
+                return os.waitstatus_to_exitcode(status)
+            time.sleep(.05)
+        os.kill(pid, signal.SIGKILL)
+        os.waitpid(pid, 0)
+        self.fail('seal did not exit in time')
+
     def read_until(self, master, needle, transcript=b''):
         deadline = time.monotonic() + 10
         while needle not in transcript and time.monotonic() < deadline:
@@ -266,8 +278,7 @@ class PromptTests(Base):
         t = self.read_until(master, b'again:', t)
         time.sleep(.2)
         os.write(master, b'final-secret\n')
-        _, status = os.waitpid(pid, 0)
-        self.assertEqual(os.waitstatus_to_exitcode(status), 0)
+        self.assertEqual(self.wait_exit(pid), 0)
         while select.select([master], [], [], 0)[0]:
             try:
                 chunk = os.read(master, 4096)
@@ -290,14 +301,13 @@ class PromptTests(Base):
         os.write(master, b'\n')
         t = self.read_until(master, b'did not match', t)
         os.kill(pid, 15)
-        os.waitpid(pid, 0)
+        self.wait_exit(pid)
         self.assertFalse(self.ledger.exists())
 
     def test_f8_stdin_flag_on_terminal_refused(self):
         pid, master = self.spawn('set', 'K', '--stdin')
         self.read_until(master, b'needs a pipe')
-        _, status = os.waitpid(pid, 0)
-        self.assertEqual(os.waitstatus_to_exitcode(status), 1)
+        self.assertEqual(self.wait_exit(pid), 1)
         self.assertFalse(self.ledger.exists())
 
     def test_f9_prompt_keeps_edge_whitespace(self):
@@ -308,8 +318,7 @@ class PromptTests(Base):
         self.read_until(master, b'again:', t)
         time.sleep(.2)
         os.write(master, b'  pass phrase \t\n')
-        _, status = os.waitpid(pid, 0)
-        self.assertEqual(os.waitstatus_to_exitcode(status), 0)
+        self.assertEqual(self.wait_exit(pid), 0)
         self.assertEqual(self.seal('get', 'WS').stdout, '  pass phrase \t')
 
 
@@ -498,10 +507,41 @@ class HardeningTests(Base):
 
     def test_f13_exec_child_gets_no_sops_key_vars(self):
         self.put('TOKEN', 't')
-        env = dict(self.env, SOPS_AGE_KEY_CMD='true')
+        priv = next(l for l in self.key.read_text().splitlines() if l.startswith('AGE-SECRET-KEY-'))
+        env = dict(self.env, SOPS_AGE_KEY_CMD='true', SOPS_AGE_KEY=priv)
         p = self.seal('exec', '--', 'sh', '-c', 'env', env=env, check=True)
         self.assertIn('TOKEN=t', p.stdout)
         self.assertNotIn('SOPS_AGE_', p.stdout)
+
+    def test_f13_sigterm_to_exec_leaves_no_orphan(self):
+        self.put('TOKEN', 't')
+        pidfile = self.tmp / 'child.pid'
+        proc = subprocess.Popen([SEAL, 'exec', '--', 'sh', '-c', f'echo $$ > {pidfile}; exec sleep 30'], env=self.env)
+        self.addCleanup(lambda: proc.poll() is None and proc.kill())
+        deadline = time.monotonic() + 10
+        while not (pidfile.exists() and pidfile.read_text().strip()) and time.monotonic() < deadline:
+            time.sleep(.05)
+        child = int(pidfile.read_text())
+        proc.terminate()
+        proc.wait(timeout=10)
+        time.sleep(.2)
+        with self.assertRaises(ProcessLookupError):
+            os.kill(child, 0)
+
+    def test_f18_malformed_sops_yaml_above_ledger_is_ignored(self):
+        self.put('K', 'v')
+        (self.ledger.parent / '.sops.yaml').write_text('creation_rules: [unclosed\n')
+        self.put('K2', 'w')
+        self.assertEqual(self.seal('get', 'K2', check=True).stdout, 'w')
+        self.seal('rm', 'K', check=True)
+        self.assertEqual(self.seal('exec', '--', 'sh', '-c', 'printf %s "$K2"', check=True).stdout, 'w')
+
+    def test_f6_comma_joined_r_value_rejected(self):
+        src = self.tmp / 'in.yaml'
+        src.write_text('a: b\n')
+        p = self.seal('file', '-r', f'{self.pub},{self.pub}', str(src), str(self.tmp / 'o.yaml'))
+        self.assertEqual(p.returncode, 1)
+        self.assertFalse((self.tmp / 'o.yaml').exists())
 
     def test_f15_f17_symlinked_ledger_and_dash_command_refused(self):
         self.put('K', 'v')

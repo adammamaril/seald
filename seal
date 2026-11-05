@@ -19,7 +19,7 @@
 #   It is created by the first `set`, encrypted to the age recipients (public keys, age1...)
 #   in SEAL_RECIPIENTS (comma- or newline-separated) or, if that is unset, in the file SEAL_RECIPIENTS_FILE
 #   (default ~/.config/sops/age/pubs.txt; one key per line, # comments ignored, bad lines warned).
-#   Decryption uses SOPS_AGE_KEY / SOPS_AGE_KEY_FILE, else ~/.config/sops/age/keys.txt.
+#   Decryption uses every key sops finds, plus ~/.config/sops/age/keys.txt.
 #
 # `seal file` takes recipients from -r (repeatable), -R FILE (one per line; blank lines and
 #   # comments ignored) and SEAL_RECIPIENTS; if none are given it falls back to the same
@@ -28,7 +28,7 @@
 # Guarantees:
 #   * Secrets are never in argv and never on disk in clear; only `get` prints one.
 #   * Every write goes to a temporary file in the same directory, then is renamed into
-#     place, so a crash leaves the old ledger whole; modes are 0600.
+#     place, so a killed process or full disk leaves the old ledger whole; modes are 0600.
 #   * Refuses to run under xtrace.
 #
 # Requires: sops 3.11 or newer. Nothing else.

@@ -67,8 +67,8 @@ Ledger: `~/.local/share/seal/secrets.enc.yaml` (`-l` / `SEAL_LEDGER`). Recipient
 │                  (or piped / --stdin: the whole of stdin)                │
 │ 3. first set     recipients: SEAL_RECIPIENTS or ~/.config/sops/age/pubs  │
 │                  creates an empty ledger: temp file, 0600, mv into place │
-│ 4. store         json_str (pure bash) | sops set --value-stdin LEDGER    │
-│                  then chmod 0600                                         │
+│ 4. store         json_str (pure bash) | sops set --value-stdin on a 0600 │
+│                  temp copy of the ledger, then mv into place             │
 │                                                                          │
 │ the value is never in argv, never on disk in clear, never echoed         │
 └─────────────────────────────────────┬────────────────────────────────────┘
