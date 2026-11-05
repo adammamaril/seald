@@ -293,6 +293,25 @@ class PromptTests(Base):
         os.waitpid(pid, 0)
         self.assertFalse(self.ledger.exists())
 
+    def test_f8_stdin_flag_on_terminal_refused(self):
+        pid, master = self.spawn('set', 'K', '--stdin')
+        self.read_until(master, b'needs a pipe')
+        _, status = os.waitpid(pid, 0)
+        self.assertEqual(os.waitstatus_to_exitcode(status), 1)
+        self.assertFalse(self.ledger.exists())
+
+    def test_f9_prompt_keeps_edge_whitespace(self):
+        pid, master = self.spawn('set', 'WS')
+        t = self.read_until(master, b'value for WS:')
+        time.sleep(.2)
+        os.write(master, b'  pass phrase \t\n')
+        self.read_until(master, b'again:', t)
+        time.sleep(.2)
+        os.write(master, b'  pass phrase \t\n')
+        _, status = os.waitpid(pid, 0)
+        self.assertEqual(os.waitstatus_to_exitcode(status), 0)
+        self.assertEqual(self.seal('get', 'WS').stdout, '  pass phrase \t')
+
 
 class FileModeTests(Base):
     """The one-shot `seal file` mode (whole YAML file in, sealed YAML file out)."""
@@ -363,6 +382,133 @@ class FileModeTests(Base):
                            capture_output=True, text=True, env=self.env)
         self.assertEqual(p.returncode, 2)
         self.assertFalse(self.out.exists())
+
+
+class HardeningTests(Base):
+    """One test per fix from the security review (finding numbers in the names)."""
+
+    def keypair(self, name):
+        k = self.tmp / name
+        subprocess.run(['age-keygen', '-o', str(k)], check=True, capture_output=True)
+        return k, subprocess.run(['age-keygen', '-y', str(k)], check=True, capture_output=True, text=True).stdout.strip()
+
+    def decrypts_with(self, keyfile, key='K'):
+        env = dict(self.env, SOPS_AGE_KEY_FILE=str(keyfile))
+        return self.seal('get', key, env=env).returncode == 0
+
+    def test_f1_failed_write_keeps_ledger_and_writes_rename(self):
+        self.put('A', 'a')
+        self.put('B', 'b')
+        before, ino = self.ledger.read_bytes(), self.ledger.stat().st_ino
+        # a sops that truncates its target and dies, as on a crash or full disk
+        fake = self.tmp / 'fakebin'
+        fake.mkdir()
+        (fake / 'sops').write_text('#!/bin/sh\nfor a; do f=$p; p=$a; done\n: > "$f"\nexit 1\n')
+        (fake / 'sops').chmod(0o755)
+        env = dict(self.env, PATH=f'{fake}:{self.env["PATH"]}')
+        self.assertEqual(self.seal('set', 'C', input='c', env=env).returncode, 1)
+        self.assertEqual(self.seal('rm', 'A', env=env).returncode, 1)
+        self.assertEqual(self.ledger.read_bytes(), before)
+        self.assertEqual(os.listdir(self.ledger.parent), ['secrets.enc.yaml'])
+        self.put('C', 'c')
+        self.assertNotEqual(self.ledger.stat().st_ino, ino)
+        self.assertEqual(self.seal('get', 'A').stdout, 'a')
+        self.ledger.write_bytes(b'')
+        self.assertIn('empty', self.seal('get', 'A').stderr)
+
+    def test_f2_stray_sops_yaml_cannot_leave_cleartext(self):
+        src = self.tmp / 'in.yaml'
+        src.write_text('token: CANARY-f2\n')
+        (self.tmp / '.sops.yaml').write_text('creation_rules:\n  - unencrypted_regex: ".*"\n')
+        out = self.tmp / 'out.enc.yaml'
+        self.seal('file', '-r', self.pub, str(src), str(out), cwd=self.tmp, check=True)
+        self.assertNotIn('CANARY-f2', out.read_text())
+        self.put('K', 'CANARY-ledger')  # ledger writes ignore it too
+        self.assertNotIn(b'CANARY', self.ledger.read_bytes())
+
+    def test_f3_unencrypted_suffix_refused(self):
+        p = self.seal('set', 'API_unencrypted', input='CANARY')
+        self.assertEqual(p.returncode, 1)
+        self.assertIn('_unencrypted', p.stderr)
+        self.assertFalse(self.ledger.exists())
+
+    def test_f4_xdg_elsewhere_still_finds_readme_key(self):
+        keys = self.home / '.config/sops/age/keys.txt'
+        keys.parent.mkdir(parents=True)
+        shutil.copy(self.key, keys)
+        env = {k: v for k, v in self.env.items() if k != 'SOPS_AGE_KEY_FILE'}
+        env['XDG_CONFIG_HOME'] = str(self.tmp / 'xdg')
+        self.seal('set', 'K', input='v', env=env, check=True)
+        self.seal('set', 'K2', input='w', env=env, check=True)
+        self.assertEqual(self.seal('get', 'K2', env=env).stdout, 'w')
+
+    def test_f4_failed_first_set_leaves_no_ledger(self):
+        _, other_pub = self.keypair('other.txt')  # we hold no key for this recipient
+        p = self.seal('set', 'K', input='v', env=dict(self.env, SEAL_RECIPIENTS=other_pub))
+        self.assertEqual(p.returncode, 1)
+        self.assertFalse(self.ledger.exists())
+        self.assertEqual(os.listdir(self.ledger.parent), [])
+
+    def test_f6_errors_never_print_private_key_or_value(self):
+        priv = next(l for l in self.key.read_text().splitlines() if l.startswith('AGE-SECRET-KEY-'))
+        src = self.tmp / 'in.yaml'
+        src.write_text('a: b\n')
+        rf = self.tmp / 'r.txt'
+        rf.write_text(priv + '\n')
+        for p in (self.seal('file', '-r', priv, str(src), str(self.tmp / 'o.yaml')),
+                  self.seal('file', '-R', str(rf), str(src), str(self.tmp / 'o.yaml')),
+                  self.seal('set', 'K', input='v', env=dict(self.env, SEAL_RECIPIENTS=priv))):
+            self.assertEqual(p.returncode, 1)
+            self.assertNotIn(priv, p.stdout + p.stderr)
+            self.assertNotIn(priv[15:], p.stdout + p.stderr)
+        p = self.seal('set', 'hunter2-value!', input='v')
+        self.assertEqual(p.returncode, 1)
+        self.assertNotIn('hunter2', p.stderr)
+
+    def test_f7_bad_recipients_line_warns_and_keeps_good_keys(self):
+        k2, p2 = self.keypair('k2.txt')
+        k3, p3 = self.keypair('k3.txt')
+        pubs = self.tmp / 'pubs.txt'
+        pubs.write_bytes(f'{self.pub}\r\n  {p2}   # backup\nAGE1TYPO\n{p3}'.encode())
+        env = {k: v for k, v in self.env.items() if k != 'SEAL_RECIPIENTS'}
+        env['SEAL_RECIPIENTS_FILE'] = str(pubs)
+        p = self.seal('set', 'K', input='v', env=env, check=True)
+        self.assertIn('ignoring a bad line', p.stderr)
+        for k in (self.key, k2, k3):
+            self.assertTrue(self.decrypts_with(k), k)
+
+    def test_f7_newline_separated_env_recipients(self):
+        k2, p2 = self.keypair('k2.txt')
+        self.seal('set', 'K', input='v', env=dict(self.env, SEAL_RECIPIENTS=f'{self.pub}\n{p2}\n'), check=True)
+        self.assertTrue(self.decrypts_with(k2))
+
+    def test_f9_nul_refused(self):
+        p = subprocess.run([SEAL, 'set', 'K'], input=b'abc\0def', capture_output=True, env=self.env)
+        self.assertEqual(p.returncode, 1)
+        self.assertIn(b'NUL', p.stderr)
+        self.assertFalse(self.ledger.exists())
+
+    def test_f12_yaml_reserved_word_keys_reachable(self):
+        for k in ('Yes', 'NO', 'null', 'True'):
+            self.put(k, k.lower() + '-v')
+        self.assertEqual(self.seal('list').stdout, 'NO\nTrue\nYes\nnull\n')
+        self.assertEqual(self.seal('get', 'Yes').stdout, 'yes-v')
+        self.seal('rm', 'null', check=True)
+        self.assertNotIn('null', self.seal('list').stdout)
+
+    def test_f13_exec_child_gets_no_sops_key_vars(self):
+        self.put('TOKEN', 't')
+        env = dict(self.env, SOPS_AGE_KEY_CMD='true')
+        p = self.seal('exec', '--', 'sh', '-c', 'env', env=env, check=True)
+        self.assertIn('TOKEN=t', p.stdout)
+        self.assertNotIn('SOPS_AGE_', p.stdout)
+
+    def test_f15_f17_symlinked_ledger_and_dash_command_refused(self):
+        self.put('K', 'v')
+        link = self.tmp / 'link.enc.yaml'
+        link.symlink_to(self.ledger)
+        self.assertIn('symlink', self.seal('-l', str(link), 'get', 'K').stderr)
+        self.assertEqual(self.seal('exec', '--', '-c', 'true').returncode, 2)
 
 
 if __name__ == '__main__':

@@ -17,9 +17,9 @@
 #
 # Ledger: -l FILE or SEAL_LEDGER, default ~/.local/share/seal/secrets.enc.yaml (mode 0600).
 #   It is created by the first `set`, encrypted to the age recipients (public keys, age1...)
-#   in SEAL_RECIPIENTS (comma-separated) or, if that is unset, in the file SEAL_RECIPIENTS_FILE
-#   (default ~/.config/sops/age/pubs.txt; lines matching ^age1[0-9a-z]{58}$ are used).
-#   Decryption uses sops' usual identity (SOPS_AGE_KEY_FILE or ~/.config/sops/age/keys.txt).
+#   in SEAL_RECIPIENTS (comma- or newline-separated) or, if that is unset, in the file SEAL_RECIPIENTS_FILE
+#   (default ~/.config/sops/age/pubs.txt; one key per line, # comments ignored, bad lines warned).
+#   Decryption uses SOPS_AGE_KEY / SOPS_AGE_KEY_FILE, else ~/.config/sops/age/keys.txt.
 #
 # `seal file` takes recipients from -r (repeatable), -R FILE (one per line; blank lines and
 #   # comments ignored) and SEAL_RECIPIENTS; if none are given it falls back to the same
@@ -27,10 +27,11 @@
 #
 # Guarantees:
 #   * Secrets are never in argv and never on disk in clear; only `get` prints one.
-#   * Files are written via a temporary file and moved into place; modes are 0600.
+#   * Every write goes to a temporary file in the same directory, then is renamed into
+#     place, so a crash leaves the old ledger whole; modes are 0600.
 #   * Refuses to run under xtrace.
 #
-# Requires: sops. Nothing else.
+# Requires: sops 3.11 or newer. Nothing else.
 
 set -euo pipefail
 umask 077
@@ -39,6 +40,10 @@ case $- in *x*) echo "seal: refusing to run with xtrace on" >&2; exit 2 ;; esac
 AGE_RE='^age1[0-9a-z]{58}$'
 KEY_RE='^[A-Za-z_][A-Za-z0-9_]*$'
 tmp=""
+# sops' default key path moves with XDG_CONFIG_HOME and on macOS; the README's path must always work.
+if [ -z "${SOPS_AGE_KEY:-}${SOPS_AGE_KEY_FILE:-}" ] && [ -r "${HOME:-}/.config/sops/age/keys.txt" ]; then
+  export SOPS_AGE_KEY_FILE=$HOME/.config/sops/age/keys.txt
+fi
 trap 'if [ -n "$tmp" ]; then rm -f "$tmp"; fi' EXIT
 
 die() { printf 'seal: %s\n' "$1" >&2; exit 1; }
@@ -46,8 +51,9 @@ usage() { sed -n '2,/^$/p' "$0" | sed 's/^# \{0,1\}//' >&2; exit "${1:-2}"; }
 need() { command -v "$1" >/dev/null 2>&1 || die "$1 is required; install it first"; }
 shq() { local s=$1; s=${s//\'/"'\\''"}; printf "'%s'" "$s"; }
 valid_key() {
-  [[ ${1:-} =~ $KEY_RE ]] || die "bad key name '${1:-}': use letters, digits and _, not starting with a digit"
+  [[ ${1:-} =~ $KEY_RE ]] || die "bad key name: use letters, digits and _, not starting with a digit"
   [ "$1" != sops ] || die "'sops' is reserved for the ledger's own metadata; pick another name"
+  case $1 in *_unencrypted) die "names ending in _unencrypted would be stored in clear by sops; pick another" ;; esac
 }
 
 # JSON-encode $1 as a string, in pure bash: no subprocess, the value never reaches argv.
@@ -68,14 +74,18 @@ json_str() {
 env_recipients() {
   local r
   if [ -n "${SEAL_RECIPIENTS:-}" ]; then
-    IFS=, read -r -a _env <<<"$SEAL_RECIPIENTS"
+    IFS=, read -r -a _env <<<"${SEAL_RECIPIENTS//$'\n'/,}"
     for r in "${_env[@]}"; do r=${r//[[:space:]]/}; if [ -n "$r" ]; then recipients+=("$r"); fi; done
   fi
 }
 default_file_recipients() {
   local f=${SEAL_RECIPIENTS_FILE:-${HOME:-}/.config/sops/age/pubs.txt} line
   [ -r "$f" ] || return 0
-  while IFS= read -r line; do recipients+=("$line"); done < <(grep -E "$AGE_RE" "$f" || true)
+  while IFS= read -r line || [ -n "$line" ]; do
+    line=${line%%#*}; line=${line//[[:space:]]/}
+    [ -n "$line" ] || continue
+    if [[ $line =~ $AGE_RE ]]; then recipients+=("$line"); else printf 'seal: ignoring a bad line in %s\n' "$f" >&2; fi
+  done <"$f"
 }
 no_recipients() { die "no recipients; use $1SEAL_RECIPIENTS or put age public keys in SEAL_RECIPIENTS_FILE (default ~/.config/sops/age/pubs.txt)"; }
 join_recipients() { local IFS=,; printf '%s' "$*"; }
@@ -86,18 +96,20 @@ ORIG=$PWD
 resolve_ledger() {
   case $ledger in /*) ;; *) ledger=$PWD/$ledger ;; esac
   case $ledger in *.yaml | *.yml) ;; *) die "the ledger must be a .yaml or .yml file: $ledger" ;; esac
+  [ ! -L "$ledger" ] || die "the ledger must not be a symlink: $ledger"
   ldir=$(dirname "$ledger"); lbase=$(basename "$ledger")
 }
 enter_ledger() {  # ledger must exist; cd so a stray .sops.yaml elsewhere cannot apply
   need sops
   resolve_ledger
   [ -f "$ledger" ] || die "no ledger at $ledger; create it with: seal set KEY"
+  [ -s "$ledger" ] || die "$ledger is empty: damaged by a crash? restore it from a backup"
   cd "$ldir"
 }
 key_names() {  # key names are plaintext in a SOPS file: read them without decrypting anything
   local line
   while IFS= read -r line || [ -n "$line" ]; do
-    [[ $line =~ ^([A-Za-z_][A-Za-z0-9_]*): ]] || continue
+    [[ $line =~ ^\"?([A-Za-z_][A-Za-z0-9_]*)\"?: ]] || continue
     [ "${BASH_REMATCH[1]}" = sops ] || printf '%s\n' "${BASH_REMATCH[1]}"
   done <"$lbase"
 }
@@ -106,6 +118,10 @@ require_key() {
   names=$(key_names) || die "cannot read $ledger"
   printf '%s\n' "$names" | grep -qxF -- "$1" || die "$1 not found"
 }
+
+# sops rewrites its target in place (truncate, then write): work on a private copy, then rename.
+begin_write() { tmp=$(mktemp "$ldir/.seal.XXXXXX"); cat "$lbase" >"$tmp"; }
+end_write() { mv -f "$tmp" "$lbase"; tmp=""; }
 
 new_ledger() {  # $1 = comma-joined recipients; --config /dev/null: no stray .sops.yaml may apply
   tmp=$(mktemp "$ldir/.seal.XXXXXX")
@@ -117,13 +133,14 @@ new_ledger() {  # $1 = comma-joined recipients; --config /dev/null: no stray .so
 read_value() {  # sets `value`
   local again
   if [ "$from_stdin" = 1 ] || [ ! -t 0 ]; then
-    IFS= read -r -d '' value || true
+    [ ! -t 0 ] || die "--stdin needs a pipe; on a terminal just run: seal set $key"
+    if IFS= read -r -d '' value; then die "value contains a NUL byte; nothing stored"; fi
     [ -n "$value" ] || die "empty value on stdin; nothing stored"
     return
   fi
   while :; do
-    read -rs -p "  value for $key: " value || die "no input"; echo >&2
-    read -rs -p "  again: " again || die "no input"; echo >&2
+    IFS= read -rs -p "  value for $key: " value || die "no input"; echo >&2
+    IFS= read -rs -p "  again: " again || die "no input"; echo >&2
     [ -n "$value" ] && [ "$value" = "$again" ] && break
     echo "  empty or did not match; try again" >&2
   done
@@ -145,7 +162,7 @@ cmd_set() {
   if [ ! -e "$ledger" ]; then
     recipients=(); env_recipients
     if [ ${#recipients[@]} -eq 0 ]; then default_file_recipients; fi
-    for a in ${recipients[@]+"${recipients[@]}"}; do [[ $a =~ $AGE_RE ]] || die "not an age public key: $a"; done
+    for a in ${recipients[@]+"${recipients[@]}"}; do [[ $a =~ $AGE_RE ]] || die "SEAL_RECIPIENTS holds something that is not an age public key"; done
     [ ${#recipients[@]} -gt 0 ] || no_recipients ""
     rcpts=$(join_recipients "${recipients[@]}")
   fi
@@ -153,16 +170,19 @@ cmd_set() {
   mkdir -p "$ldir"
   cd "$ldir"
   if [ -n "$rcpts" ]; then new_ledger "$rcpts"; fi
-  json_str "$value" | sops set --value-stdin "$lbase" "[\"$key\"]" \
-    || die "could not store $key"
-  chmod 0600 "$lbase"
+  begin_write
+  if ! json_str "$value" | sops --config /dev/null set --input-type yaml --output-type yaml --value-stdin "$tmp" "[\"$key\"]"; then
+    if [ -n "$rcpts" ]; then rm -f "$lbase"; fi  # no empty ledger left behind
+    die "could not store $key"
+  fi
+  end_write
   printf 'seal: stored %s in %s\n' "$key" "$ledger" >&2
 }
 
 cmd_get() {
   [ $# -eq 1 ] || usage
   valid_key "$1"; enter_ledger; require_key "$1"
-  exec sops -d --extract "[\"$1\"]" "$lbase"
+  exec sops --config /dev/null -d --extract "[\"$1\"]" "$lbase"
 }
 
 cmd_list() {
@@ -174,19 +194,21 @@ cmd_list() {
 cmd_rm() {
   [ $# -eq 1 ] || usage
   valid_key "$1"; enter_ledger; require_key "$1"
-  sops unset "$lbase" "[\"$1\"]" || die "could not remove $1"
-  chmod 0600 "$lbase"
+  begin_write
+  sops --config /dev/null unset --input-type yaml --output-type yaml "$tmp" "[\"$1\"]" || die "could not remove $1"
+  end_write
   printf 'seal: removed %s\n' "$1" >&2
 }
 
 cmd_exec() {
   if [ "${1:-}" = -- ]; then shift; fi
   [ $# -gt 0 ] || usage
+  case $1 in -*) usage ;; esac
   enter_ledger
   local line a
-  line="cd -- $(shq "$ORIG") && exec"  # the ledger dir is only for sops, not for the command
+  line="unset SOPS_AGE_KEY SOPS_AGE_KEY_FILE SOPS_AGE_KEY_CMD; cd -- $(shq "$ORIG") && exec"  # the ledger dir is only for sops, not for the command
   for a in "$@"; do line+=" $(shq "$a")"; done
-  exec sops exec-env "$lbase" "$line"
+  exec sops --config /dev/null exec-env --same-process "$lbase" "$line"
 }
 
 # ---- file mode: encrypt a whole YAML file ------------------------------------------------
@@ -213,7 +235,7 @@ cmd_file() {
   if [ ${#recipients[@]} -eq 0 ]; then default_file_recipients; fi
   [ ${#recipients[@]} -gt 0 ] || no_recipients "-r, -R, "
   for r in "${recipients[@]}"; do
-    case $r in age1[a-z0-9]*) ;; *) die "not an age public key: $r" ;; esac
+    [[ $r =~ $AGE_RE ]] || die "a recipient is not an age public key"
   done
   [ -r "$input" ] || die "cannot read input: $input"
   [ "$force" = 1 ] || [ ! -e "$output" ] || die "$output exists; use -f to replace it"
@@ -221,7 +243,7 @@ cmd_file() {
 
   tmp=$(mktemp "$output.XXXXXX")
   joined=$(join_recipients "${recipients[@]}")
-  sops --encrypt --age "$joined" --input-type yaml --output-type yaml "$input" >"$tmp" \
+  sops --config /dev/null --encrypt --age "$joined" --input-type yaml --output-type yaml "$input" >"$tmp" \
     || die "sops encryption failed"
   chmod 0600 "$tmp"
   mv -f "$tmp" "$output"; tmp=""

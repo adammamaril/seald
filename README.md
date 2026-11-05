@@ -13,7 +13,7 @@
 
 ## Requirements
 
-Needs only [sops](https://github.com/getsops/sops), plus [age](https://github.com/FiloSottile/age) to make your key:
+Needs only [sops](https://github.com/getsops/sops) 3.11+, plus [age](https://github.com/FiloSottile/age) to make your key:
 
 ```sh
 brew install sops age               # macOS
@@ -44,7 +44,7 @@ git clone https://github.com/adammamaril/seald && cd seald
 
 | Command | Does |
 |---|---|
-| `seal set KEY` | Store a secret from a hidden prompt (or stdin). Setting again rotates it. |
+| `seal set KEY` | Store a secret from a hidden prompt (or stdin). Setting again replaces the value (to change recipients, use `sops rotate`). |
 | `seal get KEY` | Print it to stdout. |
 | `seal list` | Key names only. |
 | `seal rm KEY` | Delete it. |
@@ -73,7 +73,7 @@ Ledger: `~/.local/share/seal/secrets.enc.yaml` (`-l` / `SEAL_LEDGER`). Recipient
 │ the value is never in argv, never on disk in clear, never echoed         │
 └─────────────────────────────────────┬────────────────────────────────────┘
                                       ▼
-            ~/.local/share/seal/secrets.enc.yaml (ciphertext, 0600)
+            ~/.local/share/seal/secrets.enc.yaml (values encrypted, key names in clear, 0600)
 ```
 
 - **Secrets never touch argv, disk in clear, or your screen.** Values move through pipes into `sops set --value-stdin`; files are 0600; only `get` prints a value; `seal` refuses to run under `bash -x`.
@@ -81,9 +81,9 @@ Ledger: `~/.local/share/seal/secrets.enc.yaml` (`-l` / `SEAL_LEDGER`). Recipient
 
 ## Keep in mind
 
-- **Agents: use `seal exec`, not `seal get`.** `get` puts plaintext on stdout, and so into agent context and logs.
-- **Back up `keys.txt`.** Lose it and you lose the ledger.
-- **Pipe with `printf %s`, not `echo`.** Piped input is stored exactly, trailing newline included.
+- **An agent that can run `seal` can read every secret.** Have it use `seal exec`, not `seal get`: that keeps values out of its transcript by default, not by force, since `seal get`, `seal exec -- env` and `keys.txt` are all within its reach. To really keep a secret from an agent, encrypt it to a key the agent's user cannot read. A separate ledger (`-l`) only limits what each `exec` child sees.
+- **Back up `keys.txt`; let only you write the ledger.** Lose the key and you lose the ledger; anyone who can write the ledger controls what `seal exec` runs.
+- **Text values only; pipe long ones, with `printf %s`, not `echo`.** Piped input is stored exactly, trailing newline included.
 
 ## Development
 
